@@ -1,0 +1,87 @@
+{
+  "name": "custom-line-highlight",
+  "displayName": "Custom Line Highlight",
+  "description": "Allows further control of the line highlight. Modified from https://github.com/cliffordfajardo/highlight-line-vscode",
+  "version": "0.0.1",
+  "publisher": "Logix",
+  "repository":
+  {
+    "url": ""
+  },
+  "engines":
+  {
+    "vscode": "^1.94.0"
+  },
+  "categories":
+  [
+    "Other"
+  ],
+  "keywords":
+  [
+    "highlight",
+    "highlighter",
+    "code highlighter",
+    "line highlighter",
+    "highlight line",
+    "multi-root ready"
+  ],
+  "activationEvents":
+  [
+    "*"
+  ],
+  "main": "./out/extension.js",
+  "contributes":
+  {
+    "configuration":
+    {
+      "properties":
+      {
+        "customLineHighlight.borderColour":
+        {
+            "type":
+            [
+              "string"
+            ],
+            "default": "#65EAB9",
+            "description": "Change the border colour. (Ex: 'red', '#FFF' #FFFFFFF, 'RGB(255,255,255)','RGB(255, 255, 255. 0.5) )",
+            "format": "color"
+        },
+        "customLineHighlight.borderHeight":
+        {
+          "type":
+          [
+              "string"
+          ],
+          "default": "2px"
+        }
+      }
+    },
+    "commands":
+    [
+      {
+        "command": "custom-line-highlight.helloWorld",
+        "title": "Hello World"
+      }
+    ]
+  },
+  "scripts":
+  {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "postinstall": "node ./node_modules/vscode/bin/install",
+    "test": "vscode-test"
+  },
+  "devDependencies":
+  {
+    "@types/vscode": "^1.94.0",
+    "@types/mocha": "^10.0.8",
+    "@types/node": "20.x",
+    "@typescript-eslint/eslint-plugin": "^8.7.0",
+    "@typescript-eslint/parser": "^8.7.0",
+    "eslint": "^9.11.1",
+    "typescript": "^5.6.2",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1"
+  }
+}
