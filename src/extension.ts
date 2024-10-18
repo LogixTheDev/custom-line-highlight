@@ -12,183 +12,283 @@
 
 'use strict';
 
-import { commands, ExtensionContext, window, workspace, Range, Position, TextEditorDecorationType, Selection} from 'vscode';
+import { commands, ExtensionContext, window, workspace, Range, Position, TextEditorDecorationType, Selection, TextEditor, DecorationOptions} from 'vscode';
 import { setTimeout } from 'timers';
+
+export class LHDecorations
+{
+	LHActive?: TextEditorDecorationType;
+	LHFullLineActive?: TextEditorDecorationType;
+	LHInactive?: TextEditorDecorationType;
+	LHFullLineInactive?: TextEditorDecorationType;
+
+	cleanup() : void
+	{
+		if (this.LHActive)
+		{
+			this.LHActive.dispose();
+		}
+		if (this.LHFullLineActive)
+		{
+			this.LHFullLineActive.dispose();
+		}
+		if (this.LHInactive)
+		{
+			this.LHInactive.dispose();
+		}
+		if (this.LHFullLineInactive)
+		{
+			this.LHFullLineInactive.dispose();
+		}
+	}
+}
 
 export async function activate(context: ExtensionContext)
 {
-    let decorationType = getDecorationTypeFromConfig();
-    let decorationTypeWholeLine = getDecorationTypeWholeLineFromConfig();
-    let activeEditor = window.activeTextEditor;
+    let decorations : LHDecorations = getDecorationsFromConfig();
+
     let lastActivePosition : Position;
 	let lastSelection : Selection;
+
+	commands.registerCommand("custom-line-highlight.activate", (decorations) =>
+		{
+			if (window.activeTextEditor)
+			{
+				updateDecorations(decorations);
+			}
+		});
 
     window.onDidChangeActiveTextEditor(() =>
 	{
         try
 		{
-            activeEditor = window.activeTextEditor;
-            updateDecorations(decorationType, decorationTypeWholeLine);
+            updateDecorations(decorations);
         }
 		catch (error)
 		{
-            console.error("Error from ' window.onDidChangeActiveTextEditor' -->", error);
+            console.error("window.onDidChangeActiveTextEditor() error: ", error);
         }
 		finally
 		{
-			if (activeEditor)
+			if (window.activeTextEditor)
 			{
-            	lastActivePosition = new Position(activeEditor.selection.active.line, activeEditor.selection.active.character);
+            	lastActivePosition = new Position(window.activeTextEditor.selection.active.line, window.activeTextEditor.selection.active.character);
+				lastSelection = window.activeTextEditor.selection;
 			}
         }
     });
 
     window.onDidChangeTextEditorSelection(() =>
 	{
-        updateDecorations(decorationType, decorationTypeWholeLine);
+		try
+		{
+        	updateDecorations(decorations);
+		}
+		catch (error)
+		{
+			console.error("window.onDidChangeTextEditorSelection() error: ", error);
+		}
+		finally
+		{
+			if (window.activeTextEditor)
+			{
+            	lastSelection = window.activeTextEditor.selection;
+			}
+        }
     });
 
 	window.onDidChangeActiveTextEditor(() =>
 	{
-		activeEditor = window.activeTextEditor;
-		updateDecorations(decorationType, decorationTypeWholeLine, true);
+		try
+		{
+        	updateDecorations(decorations);
+		}
+		catch (error)
+		{
+			console.error("window.onDidChangeActiveTextEditor() error: ", error);
+		}
+		finally
+		{
+			if (window.activeTextEditor)
+			{
+            	lastActivePosition = new Position(window.activeTextEditor.selection.active.line, window.activeTextEditor.selection.active.character);
+				lastSelection = window.activeTextEditor.selection;
+			}
+        }
 	});
 
-    function updateDecorations(decorationType : TextEditorDecorationType, decorationTypeWholeLine : TextEditorDecorationType, updateAllVisibleEditors : boolean = false)
+	/**
+	 * Clears decorations for each of the TextEditorDecorationTypes.
+	 * @param editor The editor for which to clear the decorations.
+	 * @param decorations The decoration collection to use for clearing. All of the decorations will be cleared, regardless of whether they were used.
+	 */
+	function clearDecorations(editor: TextEditor, decorations: LHDecorations)
+	{
+		editor.setDecorations(decorations.LHActive!, []);
+		editor.setDecorations(decorations.LHFullLineActive!, []);
+		editor.setDecorations(decorations.LHInactive!, []);
+		editor.setDecorations(decorations.LHFullLineInactive!, []);
+	}
+
+	/**
+	 * Calls clearDecorations(), then determines the correct decoration to use (based on whether the given editor is the active one, and whether fullLine is true or false), and
+	 * sets the decorations accordingly.
+	 * @param pEditor The editor for which to set the decorations.
+	 * @param pDecorations The decoration collection to use.
+	 * @param pFullLine Whether the full-line highlight should be used (if true), or the partial line highlight should be used (if false).
+	 * @param pRangesOrOptions The ranges/options to pass to the 2nd parameter of editor.setDecorations().
+	 */
+	function useDecorations(pEditor: TextEditor, pDecorations: LHDecorations, pFullLine: boolean, pRangesOrOptions: readonly Range[] | readonly DecorationOptions[])
+	{
+		const active = pEditor === window.activeTextEditor;
+
+		clearDecorations(pEditor, decorations);
+		if (active)
+		{
+			pEditor.setDecorations(pFullLine ? pDecorations.LHFullLineActive! : pDecorations.LHActive!, pRangesOrOptions);
+		}
+		else
+		{
+			pEditor.setDecorations(pFullLine ? pDecorations.LHFullLineInactive! : pDecorations.LHInactive!, pRangesOrOptions);
+		}
+	}
+
+	/**
+	 * Uses the decorations for a full-line highlight.
+	 * @param pEditor The editor for which to set the decorations.
+	 * @param pDecorations The decoration collection to use.
+	 */
+	function useDecorationsForFullLine(pEditor: TextEditor, pDecorations: LHDecorations)
+	{
+		const fullLineDecoration : DecorationOptions = { range: new Range(pEditor.selection.start, pEditor.selection.end) };
+							
+		useDecorations(pEditor, pDecorations, true, [fullLineDecoration]);
+	}
+
+	/**
+	 * Uses the decorations for a partial line highlight, avoiding the selection.
+	 * @param pEditor The editor for which to set the decorations.
+	 * @param pDecorations The decoration collection to use.
+	 */
+	function useDecorationsForSelection(pEditor: TextEditor, pDecorations: LHDecorations)
+	{
+		const line = pEditor.selection.start.line;
+
+		// Create a line highlight decoration before the selection
+		const startOfLine = new Position(line, 0);
+		const startOfSelection = new Position(line, pEditor.selection.start.character);
+		const newDecoration1 = { range: new Range(startOfLine, startOfSelection) };
+
+		// TODO: Create a line highlight decoration after the selection
+		// NOTE: Currently does not work because OF COURSE mimicking the isWholeLine beahviour couldn't just be simple... MICROSOFT! (Please fix this!)
+		/*
+		const endOfSelection = selection.end;
+		const endOfLine = editor.document.lineAt(line).range.end; // TRON reference?
+		const newDecoration2 = { range: new Range(endOfSelection, endOfLine }; // new Position(endOfLine.line, Number.MAX_SAFE_INTEGER))
+		*/
+
+		useDecorations(pEditor, pDecorations, false, [newDecoration1]);
+	}
+
+	/**
+	 * Updates the decorations automagically.
+	 * @param pDecorations The decoration collection to use.
+	 * @param pForce Whether to just force-update all visible editors. Defaults to false.
+	 */
+    function updateDecorations(pDecorations : LHDecorations, pForce : boolean = false)
 	{
         try
 		{
-            if (updateAllVisibleEditors)
+			window.visibleTextEditors.forEach((editor) =>
 			{
-                window.visibleTextEditors.forEach((editor) =>
+				const currentPosition = editor.selection.active;
+				const editorHasChangedLines = lastActivePosition.line !== currentPosition.line;
+				const isNewEditor = window.activeTextEditor && window.activeTextEditor.document.lineCount === 1 && lastActivePosition.line === 0 && lastActivePosition.character === 0;
+				const editorHasChangedSelection = editor.selection !== lastSelection;
+				
+				if(pForce || (editorHasChangedLines || editorHasChangedSelection || isNewEditor))
 				{
 					const selection = editor.selection;
-					if (selection && selection.isEmpty)
+
+					if (selection && !selection.isSingleLine)
 					{
-						const currentPosition = editor.selection.active;
-						const newDecoration = { range: new Range(currentPosition, currentPosition) };
-						editor.setDecorations(decorationType, [newDecoration]);
+						clearDecorations(editor, pDecorations);
+						return;
+					}
+
+					if (selection && !selection.isEmpty)
+					{
+						useDecorationsForSelection(editor, pDecorations);
 					}
 					else
 					{
-						editor.setDecorations(decorationType, []);
+						useDecorationsForFullLine(editor, pDecorations);
 					}
-                });
-            }
-            else
-			{
-                window.visibleTextEditors.forEach((editor) =>
-				{
-                    if(editor !== window.activeTextEditor) 
-					{
-						return;
-					}
-                    
-                    const currentPosition = editor.selection.active;
-                    const editorHasChangedLines = lastActivePosition.line !== currentPosition.line;
-                    const isNewEditor = activeEditor && activeEditor.document.lineCount === 1 && lastActivePosition.line === 0 && lastActivePosition.character === 0;
-					const editorHasChangedSelection = editor.selection !== lastSelection;
-                    
-                    if(editorHasChangedLines || editorHasChangedSelection || isNewEditor)
-					{
-						const selection = editor.selection;
-
-						if (selection && !selection.isSingleLine)
-						{
-							editor.setDecorations(decorationTypeWholeLine, []);
-							editor.setDecorations(decorationType, []);
-							return;
-						}
-
-						if (selection && !selection.isEmpty)
-						{
-							const line = selection.start.line;
-
-							// Create a line highlight decoration before the selection
-							const startOfLine = new Position(line, 0);
-							const startOfSelection = new Position(line, selection.start.character);
-							const newDecoration1 = { range: new Range(startOfLine, startOfSelection) };
-
-							// TODO: Create a line highlight decoration after the selection
-							// NOTE: Currently does not work because OF COURSE mimicking the isWholeLine beahviour couldn't just be simple... MICROSOFT! (Please fix this!)
-							/*
-							const endOfSelection = selection.end;
-							const endOfLine = editor.document.lineAt(line).range.end; // TRON reference?
-							const newDecoration2 = { range: new Range(endOfSelection, endOfLine }; // new Position(endOfLine.line, Number.MAX_SAFE_INTEGER))
-							*/
-
-							editor.setDecorations(decorationTypeWholeLine, []);
-							editor.setDecorations(decorationType, [newDecoration1]);
-						}
-						else
-						{
-							const fullLineDecoration = { range: new Range(selection.start, selection.end) };
-								
-							editor.setDecorations(decorationType, []);
-							editor.setDecorations(decorationTypeWholeLine, [fullLineDecoration]);
-						}
-                    }
-                });
-            }
-        }
+				}
+			});
+		}
         catch (error)
 		{
-            console.error("Error from ' updateDecorations' -->", error);
+            console.error("updateDecorations() error: ", error);
         }
 		finally
 		{
-			if (activeEditor)
+			if (window.activeTextEditor)
 			{
-            	lastActivePosition = new Position(activeEditor.selection.active.line, activeEditor.selection.active.character);
-				lastSelection = activeEditor.selection;
+            	lastActivePosition = new Position(window.activeTextEditor.selection.active.line, window.activeTextEditor.selection.active.character);
+				lastSelection = window.activeTextEditor.selection;
 			}
         }
     }
 
     workspace.onDidChangeConfiguration(() =>
 	{
-        decorationType.dispose();
-        decorationTypeWholeLine.dispose();
-        decorationType = getDecorationTypeFromConfig();
-        decorationTypeWholeLine = getDecorationTypeWholeLineFromConfig();
-        updateDecorations(decorationType, decorationTypeWholeLine, true);
-    });
+        decorations.cleanup();
+        decorations = getDecorationsFromConfig();
 
-	if (activeEditor)
-	{
-        updateDecorations(decorationType, decorationTypeWholeLine, true);
-    }
+        updateDecorations(decorations, true);
+    });
+	
+	updateDecorations(decorations, true);
 }
 
 //UTILITIES
-function getDecorationTypeFromConfig()
+function getDecorationsFromConfig() : LHDecorations
 {
     const config = workspace.getConfiguration("customLineHighlight");
-    const borderColor = config.get("borderColour");
+
+    const lineHighlightColourActive = config.get("lineHighlightColourActive");
+    const lineHighlightColourInactive = config.get("lineHighlightColourInactive");
     const borderHeight = config.get("borderHeight");
-    const decorationType = window.createTextEditorDecorationType(
-		{
+
+	const decorations = new LHDecorations();
+
+	decorations.LHActive = window.createTextEditorDecorationType({
 			isWholeLine: false,
 			borderWidth: `0 0 ${borderHeight} 0`,
 			borderStyle: `solid`,
-			borderColor: `${borderColor}`,
+			borderColor: `${lineHighlightColourActive}`,
 		});
-    return decorationType;
-}
-
-function getDecorationTypeWholeLineFromConfig()
-{
-	const config = workspace.getConfiguration("customLineHighlight");
-    const borderColor = config.get("borderColour");
-    const borderHeight = config.get("borderHeight");
-    const decorationType = window.createTextEditorDecorationType(
-		{
+	decorations.LHFullLineActive = window.createTextEditorDecorationType({
 			isWholeLine: true,
 			borderWidth: `0 0 ${borderHeight} 0`,
 			borderStyle: `solid`,
-			borderColor: `${borderColor}`,
+			borderColor: `${lineHighlightColourActive}`,
 		});
-    return decorationType;
+	decorations.LHInactive = window.createTextEditorDecorationType({
+			isWholeLine: false,
+			borderWidth: `0 0 ${borderHeight} 0`,
+			borderStyle: `solid`,
+			borderColor: `${lineHighlightColourInactive}`,
+		});
+	decorations.LHFullLineInactive = window.createTextEditorDecorationType({
+			isWholeLine: true,
+			borderWidth: `0 0 ${borderHeight} 0`,
+			borderStyle: `solid`,
+			borderColor: `${lineHighlightColourInactive}`,
+		});
+
+    return decorations;
 }
 
 export function deactivate()

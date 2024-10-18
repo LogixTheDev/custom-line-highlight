@@ -2,7 +2,7 @@
   "name": "custom-line-highlight",
   "displayName": "Custom Line Highlight",
   "description": "Allows further control of the line highlight. Modified from https://github.com/cliffordfajardo/highlight-line-vscode",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "publisher": "Logix",
   "repository":
   {
@@ -36,14 +36,24 @@
     {
       "properties":
       {
-        "customLineHighlight.borderColour":
+        "customLineHighlight.lineHighlightColourActive":
         {
             "type":
             [
               "string"
             ],
-            "default": "#65EAB9",
-            "description": "Change the border colour. (Ex: 'red', '#FFF' #FFFFFFF, 'RGB(255,255,255)','RGB(255, 255, 255. 0.5) )",
+            "default": "#1513A1",
+            "description": "Change the line highlight colour for the line in the active editor",
+            "format": "color"
+        },
+        "customLineHighlight.lineHighlightColourInactive":
+        {
+            "type":
+            [
+              "string"
+            ],
+            "default": "#0C0B5D",
+            "description": "Change the line highlight colour for the line in the active editor",
             "format": "color"
         },
         "customLineHighlight.borderHeight":
@@ -52,15 +62,15 @@
           [
               "string"
           ],
-          "default": "2px"
+          "default": "1.4em"
         }
       }
     },
     "commands":
     [
       {
-        "command": "custom-line-highlight.helloWorld",
-        "title": "Hello World"
+        "command": "custom-line-highlight.activate",
+        "title": "Activate Custom Line Highlight"
       }
     ]
   },
